@@ -1,0 +1,19 @@
+{
+  "name": "dropin",
+  "version": "1.0.0",
+  "description": "DropinJS ========",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "bin": {
+    "dropin": "bin/dropin"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "browserify": "^13.1.1",
+    "rimraf": "^2.5.4",
+    "yargs": "^6.4.0"
+  }
+}
