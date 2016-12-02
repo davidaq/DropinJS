@@ -9,10 +9,14 @@
   "bin": {
     "dropin": "bin/dropin"
   },
+  "repository": "",
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "acorn": "^4.0.3",
     "browserify": "^13.1.1",
+    "concat-stream": "^1.5.2",
+    "escodegen": "^1.8.1",
     "rimraf": "^2.5.4",
     "yargs": "^6.4.0"
   }

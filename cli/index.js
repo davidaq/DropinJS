@@ -1,4 +1,10 @@
-const command = require('yargs').argv._[0] || 'help';
+const alias = {
+  'i': 'install',
+  'h': 'help',
+};
+
+let command = require('yargs').argv._[0] || 'help';
+command = alias[command] || command;
 
 if ([
   'help',
