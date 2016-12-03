@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <script src="../dist/dropin.js"></script>
+  </head>
+  <body>
+    <div id="ROOT"></div>
+    <script>
+      Dropin.debug = true;
+      Dropin(function* (require) {
+        const { render } = yield require('react-dom');
+        const jsx = yield require('t7-react');
+        const App = yield require('./app');
+        jsx.use({ App });
+        render(jsx`<App />`, document.getElementById('ROOT'));
+      });
+    </script>
+  </body>
+</html>

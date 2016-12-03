@@ -1,7 +1,7 @@
 DropinJS
 ========
 
-Just drop in the damn files into browser and run it.
+Babel? WebPack? No, no more compiling, just drop the damn files into browser make it run.
 
 Motive
 ------
@@ -17,3 +17,28 @@ some personal stuff. We've got the cool kids in town, living with generators, ar
 strings are amazing already.
 
 So now, I'm creating this library/toolset to make it even better to work directly in browser.
+
+What you can do with this library
+---------------------------------
+
+Define module as a generator function in which you may write asynchronous logic as synchronous code by
+yielding Promises (Just as how you would do in `co`).
+
+Get a `require` function to refer to other modules. This require returns a promise so you may use `yield`
+to achieve synchronous-like require.
+
+Install npm module or url as a DropinJS module, so you may refer to them in your project.
+
+Just put your files together and open your html file with a modern es6 capable browser directly, no compiling,
+no packaging, everything just works.
+
+How to work with React
+----------------------
+
+React and other popular modules may be installed to your project using `dropin install react` or so.
+
+In order to be easily blessed by the JSX syntax, I prepared a modified version of t7.js. Install it with
+`dropin install t7-react`.
+
+A full working example can be found in the examples directory within this repo.
+
