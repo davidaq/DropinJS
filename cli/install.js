@@ -3,8 +3,7 @@ const browserify = require('browserify');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-//const rimraf = require('rimraf');
-function rimraf(x, cb){cb()}
+const rimraf = require('rimraf');
 const acorn = require('acorn');
 const acornWalk = require('acorn/dist/walk');
 const escodegen = require('escodegen');
@@ -16,8 +15,7 @@ const bResolve = require('browser-resolve');
 const argv = require('yargs').argv;
 const mods = argv._.slice(1);
 
-//const tmpDir = path.join(os.tmpDir(), `dropin_install_${Math.floor(Date.now() / 1000) % 60}`);
-const tmpDir = path.join(os.tmpDir(), `dropin_install_`);
+const tmpDir = path.join(os.tmpDir(), `dropin_install_${Math.floor(Date.now() / 1000) % 60}`);
 
 const otherArgs = [];
 if (argv.cn) {
@@ -89,7 +87,6 @@ function install(modName) {
       });
     } else {
       console.log(`Install from npm: ${modName}`);
-      return resolve([modName, modName]);
       const cp = spawn('npm', ['install', modName].concat(otherArgs), {
         shell: true, stdio: 'inherit', cwd: tmpDir,
       });
