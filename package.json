@@ -9,8 +9,11 @@
   "bin": {
     "dropin": "bin/dropin"
   },
-  "repository": "",
-  "author": "",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/davidaq/DropinJS.git"
+  },
+  "author": "DavidAQ",
   "license": "ISC",
   "dependencies": {
     "acorn": "^4.0.3",
@@ -19,5 +22,13 @@
     "escodegen": "^1.8.1",
     "rimraf": "^2.5.4",
     "yargs": "^6.4.0"
-  }
+  },
+  "directories": {
+    "test": "test"
+  },
+  "devDependencies": {},
+  "bugs": {
+    "url": "https://github.com/davidaq/DropinJS/issues"
+  },
+  "homepage": "https://github.com/davidaq/DropinJS#readme"
 }
