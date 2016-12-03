@@ -3,7 +3,8 @@ const browserify = require('browserify');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const rimraf = require('rimraf');
+//const rimraf = require('rimraf');
+function rimraf(x, cb){cb()}
 const acorn = require('acorn');
 const acornWalk = require('acorn/dist/walk');
 const escodegen = require('escodegen');
@@ -15,7 +16,8 @@ const bResolve = require('browser-resolve');
 const argv = require('yargs').argv;
 const mods = argv._.slice(1);
 
-const tmpDir = path.join(os.tmpDir(), `dropin_install_${Math.floor(Date.now() / 1000) % 60}`);
+//const tmpDir = path.join(os.tmpDir(), `dropin_install_${Math.floor(Date.now() / 1000) % 60}`);
+const tmpDir = path.join(os.tmpDir(), `dropin_install_`);
 
 const otherArgs = [];
 if (argv.cn) {
@@ -46,7 +48,7 @@ function prepareTmpDir() {
   return new Promise(resolve => {
     rimraf(tmpDir, () => {
       fs.mkdir(tmpDir, (err) => {
-        if (err) {
+        if (err && err.code !== 'EEXIST') {
           console.error('Unable to create temporary directory');
         } else {
           fs.readFile(path.join(__dirname, '..', 'package.json'), (err, content) => {
@@ -87,6 +89,7 @@ function install(modName) {
       });
     } else {
       console.log(`Install from npm: ${modName}`);
+      return resolve([modName, modName]);
       const cp = spawn('npm', ['install', modName].concat(otherArgs), {
         shell: true, stdio: 'inherit', cwd: tmpDir,
       });
@@ -238,6 +241,30 @@ function integrate(modName, requireName) {
             type: 'VariableDeclarator',
             id: {
               type: 'Identifier',
+              name: 'process',
+            },
+            init: {
+              type: 'ObjectExpression',
+              properties: [
+                {
+                  type: 'Property',
+                  kind: 'init',
+                  key: {
+                    type: 'Literal',
+                    value: 'env',
+                  },
+                  value: {
+                    type: 'ObjectExpression',
+                    properties: [],
+                  },
+                },
+              ],
+            },
+          },
+          {
+            type: 'VariableDeclarator',
+            id: {
+              type: 'Identifier',
               name: '$DROPIN_EXTERN$',
             },
             init: {
@@ -271,12 +298,6 @@ function integrate(modName, requireName) {
               }),
             },
           },
-        ],
-      },
-      {
-        type: 'VariableDeclaration',
-        kind: 'const',
-        declarations: [
           {
             type: 'VariableDeclarator',
             id: {
@@ -297,6 +318,18 @@ function integrate(modName, requireName) {
                   value: {
                     type: 'ObjectExpression',
                     properties: [
+                      // {
+                      //   type: 'Property',
+                      //   kind: 'init',
+                      //   key: {
+                      //     type: 'Identifier',
+                      //     name: 'name',
+                      //   },
+                      //   value: {
+                      //     type: 'Literal',
+                      //     value: modName,
+                      //   },
+                      // },
                       {
                         type: 'Property',
                         kind: 'init',
@@ -336,7 +369,6 @@ function integrate(modName, requireName) {
                         value: {
                           type: 'ObjectExpression',
                           properties: Object.keys(code.deps).map(dep => {
-                            console.log(code.deps);
                             return {
                               type: 'Property',
                               kind: 'init',
@@ -428,18 +460,28 @@ function resolveRequire(requireName, ctx) {
     bResolve(requireName, {
       filename: ctx.from,
     }, (err, resolvedPath) => {
+      var isExternal = false;
+      if (err) {
+        if (/^[a-zA-Z0-9\-_\/]+$/.test(requireName)) {
+          resolvedPath = requireName;
+          isExternal = true;
+        } else {
+          resolvedPath = path.resolve(path.dirname(ctx.from), requireName);
+        }
+      }
+      ctx.resolvedPath = resolvedPath;
       if (ctx.codes[resolvedPath]) {
-        resolve(ctx);
+        resolve();
         return;
       }
+      ctx.resolved.counter++;
+      ctx.resolved.mods[resolvedPath] = ctx.resolved.counter;
       if (err) {
-        if (/^[a-zA-Z0-9\-_]+$/.test(requireName)) {
-          resolvedPath = requireName;
+        if (isExternal) {
           ctx.unresolved.push(requireName);
           ctx.codes[resolvedPath] = {
             type: 'Program',
             deps: {},
-            resolvedPath: resolvedPath,
             body: [
               {
                 type: 'ExpressionStatement',
@@ -459,13 +501,14 @@ function resolveRequire(requireName, ctx) {
                   },
                   right: {
                     type: 'MemberExpression',
+                    computed: true,
                     object: {
                       type: 'Identifier',
                       name: '$DROPIN_EXTERN$',
                     },
                     property: {
-                      type: 'Identifier',
-                      name: requireName,
+                      type: 'Literal',
+                      value: requireName,
                     },
                   },
                 },
@@ -473,11 +516,9 @@ function resolveRequire(requireName, ctx) {
             ],
           };
         } else {
-          resolvedPath = path.resolve(path.dirname(ctx.from), requireName);
           ctx.codes[resolvedPath] = {
             type: 'Program',
             deps: {},
-            resolvedPath: resolvedPath,
             body: [
               {
                 type: 'CallExpression',
@@ -503,7 +544,7 @@ function resolveRequire(requireName, ctx) {
           };
           console.error(err.stack);
         }
-        resolve(ctx);
+        resolve();
       } else {
         fs.readFile(resolvedPath, 'utf-8', (err, content) => {
           if (err) {
@@ -512,7 +553,6 @@ function resolveRequire(requireName, ctx) {
             const deps = [];
             const ast = acorn.parse(content);
             ast.deps = {};
-            ast.resolvedPath = resolvedPath,
             ctx.codes[resolvedPath] = ast;
             acornWalk.simple(ast, {
               CallExpression(node) {
@@ -526,21 +566,18 @@ function resolveRequire(requireName, ctx) {
                 deps.push(arg.value);
               },
             });
-            const nctx = Object.assign({}, ctx, {
-              from: resolvedPath,
-            });
             promiseEach(deps, dep =>
-              resolveRequire(dep, nctx).then(res => {
-                ast.deps[dep] = ctx.resolved.mods[res.resolvedPath];
+              resolveRequire(dep, Object.assign({}, ctx, {
+                from: resolvedPath,
+                resolvedPath: '',
+              })).then(res => {
+                ast.deps[dep] = res.resolved.mods[res.resolvedPath];
               })
-            ).then(() => resolve(ctx));
+            ).then(resolve);
           }
         });
       }
-      ctx.resolvedPath = resolvedPath;
-      ctx.resolved.counter++;
-      ctx.resolved.mods[resolvedPath] = ctx.resolved.counter;
     });
-  });
+  }).then(() => ctx);
 }
 

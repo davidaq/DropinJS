@@ -113,17 +113,15 @@
 
   function createInternalRequire(mods, deps) {
     return function(requireName) {
-      const requireId = deps[requireName];
-      if (requireId) {
-        const mod = mods[requireId];
+      const mod = mods[deps[requireName]];
+      if (mod) {
         if (!mod.cache) {
           mod.cache = { exports: {} };
           mod.define(createInternalRequire(mods, mod.deps), mod.cache, mod.cache.exports);
         }
         return mod.cache.exports;
       } else {
-        console.error(`Unable to require ${requireName}`);
-        return null;
+        throw new Error(`Unable to require ${requireName}`);
       }
     };
   }

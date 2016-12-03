@@ -15,7 +15,6 @@
   "dependencies": {
     "acorn": "^4.0.3",
     "browser-resolve": "^1.11.2",
-    "browserify": "^13.1.1",
     "concat-stream": "^1.5.2",
     "escodegen": "^1.8.1",
     "rimraf": "^2.5.4",
