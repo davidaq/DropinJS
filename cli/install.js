@@ -10,6 +10,7 @@ const escodegen = require('escodegen');
 const concat = require('concat-stream');
 const http = require('http');
 const https = require('https');
+const bResolve = require('browser-resolve');
 
 const argv = require('yargs').argv;
 const mods = argv._.slice(1);
@@ -71,7 +72,7 @@ function install(modName) {
   return new Promise(resolve => {
     if (/^https?\:\/\//.test(modName)) {
       const url = modName;
-      const match = modName.match(/([a-zA-Z0-9\-]+)(\.min)?(\.js)?$/);
+      const match = modName.match(/([a-zA-Z0-9\-_]+)(\.min)?(\.js)?$/);
       if (match) {
         modName = match[1];
       }
@@ -101,28 +102,17 @@ function install(modName) {
 }
 
 function createFile([modName, requireName]) {
-  return new Promise(resolve => {
-    const content = `
-    window.dropin.declare(${JSON.stringify(modName)}, function* () {
-      return require(${JSON.stringify(requireName)});
-    });
-    `;
-    const entry = path.join(tmpDir, 'index.js');
-    fs.writeFile(entry, content, err => {
-      if (err) {
-        console.error('Unable to write temporary file');
-      } else {
-        var pack = browserify();
-        pack.add(entry);
-        const devOutput = `${modName}.lib.js`;
-        const prodOutput = `${modName}.lib.min.js`;
-        pack.bundle().pipe(concat(code => {
-          code = code.toString();
+  return integrate(modName, requireName)
+    .then(ast => {
+      return new Promise(resolve => {
+        fs.mkdir('dropin_modules', function() {
+          const devOutput = `dropin_modules/${modName}`;
+          const prodOutput = `dropin_modules/${modName}.min`;
           const promise = [];
           promise.push(new Promise(resolve => {
-            fs.writeFile(devOutput, code, resolve);
+            console.log(`Generate ${devOutput}`);
+            fs.writeFile(devOutput + '.js', escodegen.generate(ast), resolve);
           }));
-          const ast = acorn.parse(code);
           acornWalk.simple(ast, {
             MemberExpression(node) {
               if (node.computed || node.property.type !== 'Identifier' || node.property.name !== 'NODE_ENV') {
@@ -178,11 +168,379 @@ function createFile([modName, requireName]) {
             },
           });
           promise.push(new Promise(resolve => {
-            fs.writeFile(prodOutput, code, resolve);
+            console.log(`Generate ${prodOutput}`);
+            fs.writeFile(prodOutput + '.js', code.replace('$$MOD_NAME$$', JSON.stringify(prodOutput)), resolve);
           }));
           Promise.all(promise).then(resolve);
-        }));
+        });
+      });
+    })
+    .catch(err => console.error(err.stack));
+}
+
+function integrate(modName, requireName) {
+  return resolveRequire(requireName).then(result => {
+    const body = {
+      type: 'BlockStatement',
+    };
+    const program = {
+      type: 'Program',
+      body: [
+        {
+          type: 'ExpressionStatement',
+          expression: {
+            type: 'CallExpression',
+            callee: {
+              type: 'MemberExpression',
+              object:{
+                type: 'MemberExpression',
+                object: {
+                  type: 'Identifier',
+                  name: 'window',
+                },
+                property: {
+                  type: 'Identifier',
+                  name: 'Dropin',
+                },
+              },
+              property: {
+                type: 'Identifier',
+                name: 'declare',
+              },
+            },
+            arguments: [
+              {
+                type: 'Literal',
+                value: 'dropin_modules/' + modName,
+              },
+              {
+                type: 'FunctionExpression',
+                generator: true,
+                params: [
+                  {
+                    type: 'Identifier',
+                    name: 'dReq',
+                  },
+                ],
+                body,
+              },
+            ],
+          },
+        },
+      ],
+    };
+    body.body = [
+      {
+        type: 'VariableDeclaration',
+        kind: 'const',
+        declarations: [
+          {
+            type: 'VariableDeclarator',
+            id: {
+              type: 'Identifier',
+              name: '$DROPIN_EXTERN$',
+            },
+            init: {
+              type: 'ObjectExpression',
+              properties: result.unresolved.map(item => {
+                return {
+                  type: 'Property',
+                  kind: 'init',
+                  key: {
+                    type: 'Literal',
+                    value: item,
+                  },
+                  value: {
+                    type: 'YieldExpression',
+                    delegate: false,
+                    argument: {
+                      type: 'CallExpression',
+                      callee: {
+                        type: 'Identifier',
+                        name: 'dReq',
+                      },
+                      arguments: [
+                        {
+                          type: 'Literal',
+                          value: item,
+                        },
+                      ],
+                    },
+                  },
+                };
+              }),
+            },
+          },
+        ],
+      },
+      {
+        type: 'VariableDeclaration',
+        kind: 'const',
+        declarations: [
+          {
+            type: 'VariableDeclarator',
+            id: {
+              type: 'Identifier',
+              name: '$DROPIN_MODS$',
+            },
+            init: {
+              type: 'ObjectExpression',
+              properties: Object.keys(result.codes).map(modName => {
+                const code = result.codes[modName];
+                return {
+                  type: 'Property',
+                  kind: 'init',
+                  key: {
+                    type: 'Literal',
+                    value: result.resolved.mods[modName],
+                  },
+                  value: {
+                    type: 'ObjectExpression',
+                    properties: [
+                      {
+                        type: 'Property',
+                        kind: 'init',
+                        key: {
+                          type: 'Identifier',
+                          name: 'define',
+                        },
+                        value: {
+                          type: 'FunctionExpression',
+                          params: [
+                            {
+                              type: 'Identifier',
+                              name: 'require',
+                            },
+                            {
+                              type: 'Identifier',
+                              name: 'module',
+                            },
+                            {
+                              type: 'Identifier',
+                              name: 'exports',
+                            },
+                          ],
+                          body: {
+                            type: 'BlockStatement',
+                            body: code.body,
+                          },
+                        },
+                      },
+                      {
+                        type: 'Property',
+                        kind: 'init',
+                        key: {
+                          type: 'Identifier',
+                          name: 'deps',
+                        },
+                        value: {
+                          type: 'ObjectExpression',
+                          properties: Object.keys(code.deps).map(dep => {
+                            console.log(code.deps);
+                            return {
+                              type: 'Property',
+                              kind: 'init',
+                              key: {
+                                type: 'Literal',
+                                value: dep,
+                              },
+                              value : {
+                                type: 'Literal',
+                                value: code.deps[dep],
+                              },
+                            };
+                          }),
+                        },
+                      },
+                    ],
+                  },
+                };
+              }),
+            },
+          },
+        ],
+      },
+      {
+        type: 'ReturnStatement',
+        argument: {
+          type: 'CallExpression',
+          callee: {
+            type: 'CallExpression',
+            callee: {
+              type: 'MemberExpression',
+              object: {
+                type: 'Identifier',
+                name: 'Dropin',
+              },
+              property: {
+                type: 'Identifier',
+                name: 'createInternalRequire',
+              },
+            },
+            arguments: [
+              {
+                type: 'Identifier',
+                name: '$DROPIN_MODS$',
+              },
+              {
+                type: 'ObjectExpression',
+                properties: [
+                  {
+                    type: 'Property',
+                    kind: 'init',
+                    key: {
+                      type: 'Literal',
+                      value: 'entry',
+                    },
+                    value : {
+                      type: 'Literal',
+                      value: result.resolved.mods[result.resolvedPath],
+                    },
+                  },
+                ],
+              }
+            ],
+          },
+          arguments: [
+            {
+              type: 'Literal',
+              value: 'entry',
+            }
+          ],
+        },
+      },
+    ];
+    return program;
+  });
+}
+
+function resolveRequire(requireName, ctx) {
+  ctx = ctx || {
+    from: path.join(tmpDir, '__bundle.js'),
+    codes: {},
+    unresolved: [],
+    resolved: {
+      counter: 0,
+      mods: {},
+    },
+  };
+  return new Promise(resolve => {
+    bResolve(requireName, {
+      filename: ctx.from,
+    }, (err, resolvedPath) => {
+      if (ctx.codes[resolvedPath]) {
+        resolve(ctx);
+        return;
       }
+      if (err) {
+        if (/^[a-zA-Z0-9\-_]+$/.test(requireName)) {
+          resolvedPath = requireName;
+          ctx.unresolved.push(requireName);
+          ctx.codes[resolvedPath] = {
+            type: 'Program',
+            deps: {},
+            resolvedPath: resolvedPath,
+            body: [
+              {
+                type: 'ExpressionStatement',
+                expression: {
+                  type: 'AssignmentExpression',
+                  operator: '=',
+                  left: {
+                    type: 'MemberExpression',
+                    object: {
+                      type: 'Identifier',
+                      name: 'module',
+                    },
+                    property: {
+                      type: 'Identifier',
+                      name: 'exports',
+                    },
+                  },
+                  right: {
+                    type: 'MemberExpression',
+                    object: {
+                      type: 'Identifier',
+                      name: '$DROPIN_EXTERN$',
+                    },
+                    property: {
+                      type: 'Identifier',
+                      name: requireName,
+                    },
+                  },
+                },
+              },
+            ],
+          };
+        } else {
+          resolvedPath = path.resolve(path.dirname(ctx.from), requireName);
+          ctx.codes[resolvedPath] = {
+            type: 'Program',
+            deps: {},
+            resolvedPath: resolvedPath,
+            body: [
+              {
+                type: 'CallExpression',
+                callee: {
+                  type: 'MemberExpression',
+                  object: {
+                    type: 'Identifier',
+                    name: 'console',
+                  },
+                  property: {
+                    type: 'Identifier',
+                    name: 'error',
+                  },
+                },
+                arguments: [
+                  {
+                    type: 'Literal',
+                    value: err.stack,
+                  },
+                ],
+              },
+            ],
+          };
+          console.error(err.stack);
+        }
+        resolve(ctx);
+      } else {
+        fs.readFile(resolvedPath, 'utf-8', (err, content) => {
+          if (err) {
+            console.error(err.stack);
+          } else {
+            const deps = [];
+            const ast = acorn.parse(content);
+            ast.deps = {};
+            ast.resolvedPath = resolvedPath,
+            ctx.codes[resolvedPath] = ast;
+            acornWalk.simple(ast, {
+              CallExpression(node) {
+                if (node.callee.type !== 'Identifier' || node.callee.name !== 'require') {
+                  return;
+                }
+                const arg = node.arguments[0];
+                if (node.arguments.length !== 1 || arg.type !== 'Literal' || typeof arg.value !== 'string') {
+                  return;
+                }
+                deps.push(arg.value);
+              },
+            });
+            const nctx = Object.assign({}, ctx, {
+              from: resolvedPath,
+            });
+            promiseEach(deps, dep =>
+              resolveRequire(dep, nctx).then(res => {
+                ast.deps[dep] = ctx.resolved.mods[res.resolvedPath];
+              })
+            ).then(() => resolve(ctx));
+          }
+        });
+      }
+      ctx.resolvedPath = resolvedPath;
+      ctx.resolved.counter++;
+      ctx.resolved.mods[resolvedPath] = ctx.resolved.counter;
     });
   });
 }
+
