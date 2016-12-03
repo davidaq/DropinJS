@@ -21,7 +21,7 @@ So now, I'm creating this library/toolset to make it even better to work directl
 What you can do with this library
 ---------------------------------
 
-Install the DropinJS developers tool (not required) with `npm install dropin`.
+Install the DropinJS developers tool (not required) with `npm install dropin-js`.
 
 Define module as a generator function in which you may write asynchronous logic as synchronous code by
 yielding Promises (Just as how you would do in `co`).
