@@ -1,5 +1,4 @@
 const { spawn } = require('child_process');
-const browserify = require('browserify');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -70,39 +69,88 @@ function prepareTmpDir() {
 
 function install(modName) {
   return new Promise(resolve => {
-    if (/^https?\:\/\//.test(modName)) {
-      const url = modName;
-      const match = modName.match(/([a-zA-Z0-9\-_]+)(\.min)?(\.js)?$/);
-      if (match) {
-        modName = match[1];
-      }
-      console.log(`Install from url: ${modName}`);
-      const proto = /^https/.test(url) ? https : http;
-      proto.get(url, res => {
-        const output = fs.createWriteStream(path.join(tmpDir, 'download.js'));
-        res.pipe(output);
-        output.on('finish', () => {
-          resolve([modName, './download']);
-        });
-      });
+    let uri;
+    let pathname;
+    let libName;
+    let protocol;
+    let isPrebuilt = false;
+    const match = modName.match(/^([a-zA-Z0-9\-_]+)\:((https?|npm|file)\:\/\/(.+))$/i);
+    if (match) {
+      libName = match[1];
+      uri = match[2];
+      protocol = match[3];
+      pathname = match[4];
+      load();
     } else {
-      console.log(`Install from npm: ${modName}`);
-      const cp = spawn('npm', ['install', modName].concat(otherArgs), {
-        shell: true, stdio: 'inherit', cwd: tmpDir,
-      });
-      cp.on('close', code => {
-        if (code !== 0) {
-          console.error('Install failed');
+      const prebuiltPath = path.join(__dirname, '..', 'prebuilt', modName + '.js');
+      fs.exists(prebuiltPath, exists => {
+        if (exists) {
+          let isPrebuilt = true;
+          libName = modName;
+          protocol = 'file';
+          uri = 'file://' + prebuiltPath;
+          pathname = prebuiltPath;
+          load();
         } else {
-          resolve([modName, modName]);
+          libName = modName;
+          protocol = 'npm';
+          uri = 'npm://' + modName;
+          pathname = modName;
+          load();
         }
       });
+    }
+    function load() {
+      switch (protocol) {
+        case 'file': {
+          if (isPrebuilt) {
+            console.log(`Install from prebuilt: ${modName}`);
+          } else {
+            console.log(`Install from file: ${modName}`);
+          }
+          const tmpname = `tmp-${Date.now()}${Math.random()}`;
+          const output = fs.createWriteStream(path.join(tmpDir, `${tmpname}.js`));
+          fs.createReadStream(pathname).pipe(output);
+          output.on('finish', () => {
+            resolve([libName, `./${tmpname}`]);
+          });
+          break;
+        }
+        case 'http':
+        case 'https': {
+          console.log(`Install from url: ${modName}`);
+          const proto = /^https/.test(uri) ? https : http;
+          proto.get(uri, res => {
+            const tmpname = `tmp-${Date.now()}${Math.random()}`;
+            const output = fs.createWriteStream(path.join(tmpDir, `${tmpname}.js`));
+            res.pipe(output);
+            output.on('finish', () => {
+              resolve([libName, `./${tmpname}`]);
+            });
+          });
+          break;
+        }
+        case 'npm': {
+          console.log(`Install from npm: ${modName}`);
+          const cp = spawn('npm', ['install', pathname].concat(otherArgs), {
+            shell: true, stdio: 'inherit', cwd: tmpDir,
+          });
+          cp.on('close', code => {
+            if (code !== 0) {
+              console.error('Install failed');
+            } else {
+              resolve([libName.replace(/\@.*$/, ''), pathname.replace(/\@.*$/, '')]);
+            }
+          });
+          break;
+        }
+      }
     }
   });
 }
 
 function createFile([modName, requireName]) {
-  return integrate(modName, requireName)
+  return integrate(requireName)
     .then(ast => {
       return new Promise(resolve => {
         fs.mkdir('dropin_modules', function() {
@@ -111,6 +159,7 @@ function createFile([modName, requireName]) {
           const promise = [];
           promise.push(new Promise(resolve => {
             console.log(`Generate ${devOutput}`);
+            ast.modName.value = `dropin_modules/${modName}`;
             fs.writeFile(devOutput + '.js', escodegen.generate(ast), resolve);
           }));
           acornWalk.simple(ast, {
@@ -161,6 +210,7 @@ function createFile([modName, requireName]) {
               }
             },
           });
+          ast.modName.value = `dropin_modules/${modName}.min`;
           code = escodegen.generate(ast, {
             format: {
               compact: true,
@@ -169,7 +219,7 @@ function createFile([modName, requireName]) {
           });
           promise.push(new Promise(resolve => {
             console.log(`Generate ${prodOutput}`);
-            fs.writeFile(prodOutput + '.js', code.replace('$$MOD_NAME$$', JSON.stringify(prodOutput)), resolve);
+            fs.writeFile(prodOutput + '.js', code, resolve);
           }));
           Promise.all(promise).then(resolve);
         });
@@ -178,13 +228,17 @@ function createFile([modName, requireName]) {
     .catch(err => console.error(err.stack));
 }
 
-function integrate(modName, requireName) {
+function integrate(requireName) {
   return resolveRequire(requireName).then(result => {
     const body = {
       type: 'BlockStatement',
     };
+    const modName = {
+      type: 'Literal',
+    };
     const program = {
       type: 'Program',
+      modName,
       body: [
         {
           type: 'ExpressionStatement',
@@ -209,10 +263,7 @@ function integrate(modName, requireName) {
               },
             },
             arguments: [
-              {
-                type: 'Literal',
-                value: 'dropin_modules/' + modName,
-              },
+              modName,
               {
                 type: 'FunctionExpression',
                 generator: true,
@@ -220,6 +271,10 @@ function integrate(modName, requireName) {
                   {
                     type: 'Identifier',
                     name: 'dReq',
+                  },
+                  {
+                    type: 'Identifier',
+                    name: 'DropinUtils',
                   },
                 ],
                 body,

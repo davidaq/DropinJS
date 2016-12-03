@@ -51,7 +51,12 @@
           }));
         });
       }
-      return modCache[modPath];
+      return modCache[modPath].then(ret => {
+        if (typeof ret === 'function' && ret[utils.FactoryLabel]) {
+          return ret();
+        }
+        return ret;
+      });
     }
     require.resolve = function(modPath) {
       if (/^[\-a-zA-Z0-9]+$/.test(modPath)) {
@@ -153,6 +158,13 @@
   return Dropin;
 }, function() {
   const utils = {
+  };
+  utils.FactoryLabel = Symbol('DropinFactory');
+  utils.factory = function(func) {
+    if (typeof func === 'function') {
+      func[utils.FactoryLabel] = true;
+    }
+    return func;
   };
   return utils;
 });
