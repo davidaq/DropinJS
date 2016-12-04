@@ -39,7 +39,10 @@
       modPath = require.resolve(modPath);
       if (!modCache[modPath]) {
         const timeOut = Dropin.debug ? setTimeout(() => {
-          console.warn(`${modPath} loading very slow, used in ${ctx.modPath}`);
+          const extra = /^dropin_modules\//.test(modPath)
+            ? 'Maybe you need to install it.'
+            : 'Check if the file exists.';
+          console.warn(`Load timeout for "${modPath}" used in ${ctx.modPath}. ${extra}`);
         }, 2000) : false;
         modCache[modPath] = waitForMod(modPath).then(function(func) {
           const dir = modPath.split('/');
@@ -165,6 +168,12 @@
       func[utils.FactoryLabel] = true;
     }
     return func;
+  };
+  utils.useStyle = function(css) {
+    const ele = document.createElement('style');
+    ele.type = 'text/css';
+    ele.textContent = css;
+    document.getElementsByTagName('head')[0].appendChild(ele);
   };
   return utils;
 });
