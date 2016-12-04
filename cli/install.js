@@ -7,6 +7,7 @@ const acorn = require('acorn');
 const acornWalk = require('acorn/dist/walk');
 const escodegen = require('escodegen');
 const concat = require('concat-stream');
+const cheerio = require('cheerio');
 const http = require('http');
 const https = require('https');
 const bResolve = require('browser-resolve');
@@ -23,6 +24,7 @@ if (argv.cn) {
 if (argv.registry) {
   otherArgs.push(`--registry=${JSON.stringify(argv.registry)}`);
 }
+const useBootCdn = argv.boot;
 
 prepareTmpDir().then(() => {
   return promiseEach(mods, install);
@@ -82,6 +84,9 @@ function install(modName) {
       pathname = match[4];
       load();
     } else {
+      checkPrebuilt();
+    }
+    function checkPrebuilt() {
       const prebuiltPath = path.join(__dirname, '..', 'prebuilt', modName + '.js');
       fs.exists(prebuiltPath, exists => {
         if (exists) {
@@ -92,13 +97,75 @@ function install(modName) {
           pathname = prebuiltPath;
           load();
         } else {
-          libName = modName;
-          protocol = 'npm';
-          uri = 'npm://' + modName;
-          pathname = modName;
-          load();
+          checkBootCdn();
         }
       });
+    }
+    function checkBootCdn() {
+      if (!useBootCdn) {
+        loadNpm();
+        return;
+      }
+      modName = modName.replace(/\.js$/i, '');
+      http.get(`http://www.bootcdn.cn/${modName}/`, res => {
+        if (res.statusCode === 200) {
+          loadBootCdn(res);
+        } else {
+          fail();
+        }
+      });
+      http.get(`http://www.bootcdn.cn/${modName}.js/`, res => {
+        if (res.statusCode === 200) {
+          loadBootCdn(res);
+        } else {
+          fail();
+        }
+      });
+      let loaded = false;
+      function loadBootCdn(res) {
+        if (loaded) {
+          return;
+        };
+        loaded = true;
+        res.pipe(concat(content => {
+          content = content.toString();
+          const $ = cheerio.load(content);
+          const versions = $('a.version-anchor');
+          for (let i = 0; i < versions.length; i++) {
+            const version = $(versions[i]);
+            if (/\b(pre|beta|alpha)\b/.test(version.attr('id'))) {
+              continue;
+            } else {
+              const links = version.next('h3').next('div.package-version').find('.library-url');
+              for (let i = 0; i < links.length; i++) {
+                const link = $(links[i]).html();
+                if (!/\.min\.js$/.test(link)) {
+                  continue;
+                }
+                const url = link.replace(/^.*\/\//, 'http://');
+                resolve(install(`${modName}:${url}`));
+                return;
+              }
+              break;
+            }
+          }
+          loadNpm();
+        }));
+      }
+      let fails = 0;
+      function fail() {
+        fails++;
+        if (fails >= 2) {
+          loadNpm();
+        }
+      }
+    }
+    function loadNpm() {
+      libName = modName;
+      protocol = 'npm';
+      uri = 'npm://' + modName;
+      pathname = modName;
+      load();
     }
     function load() {
       switch (protocol) {
@@ -573,28 +640,30 @@ function resolveRequire(requireName, ctx) {
             deps: {},
             body: [
               {
-                type: 'CallExpression',
-                callee: {
-                  type: 'MemberExpression',
-                  object: {
-                    type: 'Identifier',
-                    name: 'console',
+                type: 'ExpressionStatement',
+                expression: {
+                  type: 'CallExpression',
+                  callee: {
+                    type: 'MemberExpression',
+                    object: {
+                      type: 'Identifier',
+                      name: 'console',
+                    },
+                    property: {
+                      type: 'Identifier',
+                      name: 'error',
+                    },
                   },
-                  property: {
-                    type: 'Identifier',
-                    name: 'error',
-                  },
+                  arguments: [
+                    {
+                      type: 'Literal',
+                      value: err.message,
+                    },
+                  ],
                 },
-                arguments: [
-                  {
-                    type: 'Literal',
-                    value: err.stack,
-                  },
-                ],
               },
             ],
           };
-          console.error(err.stack);
         }
         resolve();
       } else {

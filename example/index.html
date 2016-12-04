@@ -11,6 +11,7 @@
       Dropin(function* (require) {
         const { render } = yield require('react-dom');
         const jsx = yield require('t7-react');
+        const less = yield require('less');
         const App = yield require('./app');
         jsx.use({ App });
         render(jsx`<App />`, document.getElementById('ROOT'));
