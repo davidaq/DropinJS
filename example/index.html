@@ -10,7 +10,7 @@
       Dropin.debug = true;
       Dropin(function* (require) {
         const { render } = yield require('react-dom');
-        const jsx = yield require('t7-react');
+        const jsx = yield require('dropin-t7-react');
         const App = yield require('./app');
         jsx.use({ App });
         render(jsx`<App />`, document.getElementById('ROOT'));

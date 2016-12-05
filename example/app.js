@@ -1,7 +1,7 @@
-Dropin.declare('app', function* (require) {
+Dropin.declare(function* (require) {
   const { Component } = yield require('react');
   const { render } = yield require('react-dom');
-  const jsx = yield require('t7-react');
+  const jsx = yield require('dropin-t7-react');
 
   class App extends Component {
     constructor(props) {

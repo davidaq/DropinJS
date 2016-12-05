@@ -68,8 +68,8 @@
         } else {
           return `dropin_modules/${modPath}.min`;
         }
-      } else if (/^\:\//.test(modPath)) {
-        return modPath.subStr(2);
+      } else if (/^\//.test(modPath)) {
+        return modPath.substr(1);
       } else {
         const path = (ctx.dir + '/' + modPath).split('/');
         const prefix = [];
@@ -93,6 +93,7 @@
     require.cache = modCache;
     return require;
   }
+  Dropin.base = '';
   function waitForMod(modPath) {
     if (!modDeclare[modPath]) {
       const url = modUri[modPath] || modPath + '.js';
@@ -101,7 +102,7 @@
         loadedScript[url] = Date.now();
         const ele = document.createElement('script');
         ele.type = 'text/javascript';
-        ele.src = url;
+        ele.src = Dropin.base + url;
         document.getElementsByTagName('head')[0].appendChild(ele);
       }
       modDeclare[modPath] = {};
@@ -135,6 +136,22 @@
   }
   Dropin.createInternalRequire = createInternalRequire;
   function declare(modName, func) {
+    if (typeof modName === 'function' && arguments.length === 1) {
+      func = modName;
+      try {
+        let src = document.currentScript.attributes.src.value;
+        if (src.substr(0, Dropin.base.length) === Dropin.base) {
+          src = src.substr(Dropin.base.length).replace(/\.js$/i, '');
+          modName = src;
+        } else {
+          throw new Error('Module not within project scope');
+        }
+      } catch(err) {
+        console.error(err);
+        console.warn('Unable to auto resolve module name, please declare module name explicitly');
+        return;
+      }
+    }
     if (modDeclare[modName]) {
       if (modDeclare[modName].resolve) {
         modDeclare[modName].resolve(func);

@@ -1,4 +1,4 @@
-window.Dropin.declare('dropin_modules/t7-react', function* (dReq, DropinUtils) {
+window.Dropin.declare('dropin_modules/dropin-t7-react', function* (dReq, DropinUtils) {
     const process = { 'env': {} }, $DROPIN_EXTERN$ = { 'react': yield dReq('react') }, $DROPIN_MODS$ = {
             1: {
                 define: function (require, module, exports) {
