@@ -94,6 +94,7 @@
     return require;
   }
   Dropin.base = '';
+  Dropin.libBase = '';
   function waitForMod(modPath) {
     if (!modDeclare[modPath]) {
       const url = modUri[modPath] || modPath + '.js';
@@ -102,7 +103,9 @@
         loadedScript[url] = Date.now();
         const ele = document.createElement('script');
         ele.type = 'text/javascript';
-        ele.src = Dropin.base + url;
+        ele.src = /^dropin_modules\//.test(modPath)
+            ? (Dropin.libBase || Dropin.base) + url
+            : Dropin.base + url;
         document.getElementsByTagName('head')[0].appendChild(ele);
       }
       modDeclare[modPath] = {};
