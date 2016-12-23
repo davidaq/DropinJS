@@ -2,12 +2,11 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <script src="../dist/dropin.js"></script>
+    <script type="text/javascript" src="../dist/dropin.js" debug></script>
   </head>
   <body>
     <div id="ROOT"></div>
     <script>
-      Dropin.debug = true;
       Dropin(function* (require) {
         const { render } = yield require('react-dom');
         const jsx = yield require('dropin-t7-react');
