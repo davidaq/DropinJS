@@ -48,7 +48,7 @@
     Dropin.createInternalRequire = M.createInternalRequire;
     Dropin.declare = M.declare;
     Dropin.package = M.package;
-    Dropin.getLoadedModules = M.getLoadedModules;
+    Object.defineProperty(Dropin, 'modules', { get: M.getLoadedModules });
     return Dropin;
   },
 
@@ -73,44 +73,53 @@
 
     function waitForMod(modPath) {
       if (!modDeclare[modPath]) {
+        const decl = {};
         const url = modUri[modPath] || modPath + '.js';
-        if (loadedScript[url]) {
-        } else {
+        if (!loadedScript[url]) {
           loadedScript[url] = Date.now();
           const ele = document.createElement('script');
           ele.type = 'text/javascript';
           ele.src = /^dropin_modules\//.test(modPath)
-              ? (Dropin.libBase || Dropin.base) + url
-              : Dropin.base + url;
+            ? (Dropin.libBase || Dropin.base) + url
+            : Dropin.base + url;
+          ele.onload = ele.onerror = () => {
+            setTimeout(() => {
+              if (decl.resolve) {
+                decl.resolve();
+                delete decl.resolve;
+              }
+            }, 50);
+          };
           document.getElementsByTagName('head')[0].appendChild(ele);
         }
-        modDeclare[modPath] = {};
-        modDeclare[modPath].promise = new Promise((resolve, reject) => {
-          modDeclare[modPath].resolve = resolve;
+        decl.promise = new Promise((resolve, reject) => {
+          decl.resolve = resolve;
         });
+        modDeclare[modPath] = decl;
       }
       return modDeclare[modPath].promise;
     }
 
     return (ctx) => {
-      function require(modPath) {
-        modPath = require.resolve(modPath);
+      function require(inModPath) {
+        const modPath = require.resolve(inModPath);
         if (!modCache[modPath]) {
-          const timeOut = Dropin.debug ? setTimeout(() => {
-            const extra = /^dropin_modules\//.test(modPath)
-              ? 'Maybe you need to install it.'
-              : 'Check if the file exists.';
-            console.warn(`Load timeout for "${modPath}" used in ${ctx.modPath}. ${extra}`);
-          }, 2000) : false;
-          modCache[modPath] = waitForMod(modPath).then(function(func) {
-            const dir = modPath.split('/');
-            dir.pop();
-            timeOut && clearTimeout(timeOut);
-            return Dropin(func, Object.assign({}, ctx, {
-              modPath,
-              dir: dir.join('/'),
-            }));
-          });
+          modCache[modPath] = waitForMod(modPath)
+            .then((func) => {
+              if (func) {
+                const dir = modPath.split('/');
+                dir.pop();
+                return Dropin(func, Object.assign({}, ctx, {
+                  modPath,
+                  dir: dir.join('/'),
+                }));
+              } else {
+                const extra = /^dropin_modules\//.test(modPath)
+                  ? 'Maybe you need to install it.'
+                  : 'Check if file exists or contain error.';
+                throw new Error(`Failed to load module "${inModPath}". ${extra}`);
+              }
+            });
         }
         return modCache[modPath].then(ret => {
           if (typeof ret === 'function' && ret[FactoryLabel]) {
@@ -246,7 +255,13 @@
 
   getLoadedModules(M) {
     const { modDeclare } = M.globals;
-    return () => Object.keys(modDeclare);
+    return () => Object.keys(modDeclare).map(name => {
+      if (/^dropin_modules\//.test(name)) {
+        return name.replace(/^dropin_modules\//, '');
+      } else {
+        return `./${name}`;
+      }
+    });
   },
 
   /**
