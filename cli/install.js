@@ -593,8 +593,13 @@ function resolveRequire(requireName, ctx) {
         resolve();
         return;
       }
-      ctx.resolved.counter++;
-      ctx.resolved.mods[resolvedPath] = ctx.resolved.counter;
+      const relativeToRoot = path.relative(tmpDir, resolvedPath).replace(/\\/g, '/');
+      if (/^node_modules\//.test(relativeToRoot)) {
+        ctx.resolved.mods[resolvedPath] = relativeToRoot;
+      } else {
+        ctx.resolved.counter++;
+        ctx.resolved.mods[resolvedPath] = ctx.resolved.counter;
+      }
       if (err) {
         if (isExternal) {
           ctx.unresolved.push(requireName);
